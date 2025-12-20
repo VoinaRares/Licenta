@@ -6,10 +6,21 @@ authors = [
     {name = "VoinaRares",email = "voinarares14@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "fastapi (>=0.120.0,<0.121.0)",
-    "uvicorn (>=0.38.0,<0.39.0)"
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "cryptography (>=46.0.3,<47.0.0)",
+    "pydantic[email] (>=2.12.3,<3.0.0)",
+    "sqlalchemy (>=2.0.44,<3.0.0)",
+    "python-dotenv (>=1.2.1,<2.0.0)",
+    "sqlmodel (>=0.0.27,<0.0.28)",
+    "psycopg2 (>=2.9.11,<3.0.0)",
+    "argon2-cffi (>=25.1.0,<26.0.0)",
+    "pycryptodome (>=3.23.0,<4.0.0)",
+    "requests (>=2.32.5,<3.0.0)",
+    "sslib (>=0.2.0,<0.3.0)",
+    "pyshamir (>=1.0.4,<2.0.0)",
 ]
 
 
