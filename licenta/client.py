@@ -46,42 +46,42 @@ session_key = HKDF(
 print("Session key:", session_key.hex())
 
 # 2) Encrypt inner layer
-plaintext = b"Hello, this is a secret message!"
-aes = AESGCM(session_key)
-inner_nonce = os.urandom(12)
-inner_ct = aes.encrypt(inner_nonce, plaintext, b"")
+# plaintext = b"Hello, this is a secret message!"
+# aes = AESGCM(session_key)
+# inner_nonce = os.urandom(12)
+# inner_ct = aes.encrypt(inner_nonce, plaintext, b"")
 
-print("Storing object...")
+# print("Storing object...")
 
-upload = requests.post(f"{SERVER}/store", json={
-    "session_id": session_id,
-    "client_ciphertext_b64": b64(inner_ct),
-    "client_nonce_b64": b64(inner_nonce),
-    "aad": "file=test",
-    "object_id": "obj-test-001"
-})
-upload.raise_for_status()
-udata = upload.json()
-print("Store response:", udata)
+# upload = requests.post(f"{SERVER}/store", json={
+#     "session_id": session_id,
+#     "client_ciphertext_b64": b64(inner_ct),
+#     "client_nonce_b64": b64(inner_nonce),
+#     "aad": "file=test",
+#     "object_id": "obj-test-001"
+# })
+# upload.raise_for_status()
+# udata = upload.json()
+# print("Store response:", udata)
 
-object_id = udata["object_id"]
+# object_id = udata["object_id"]
 
-# 3) Retrieve object
-print("Retrieving…")
-ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}")
-ret.raise_for_status()
-r = ret.json()
-print("Retrieve response:", r)
+# # 3) Retrieve object
+# print("Retrieving…")
+# ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}")
+# ret.raise_for_status()
+# r = ret.json()
+# print("Retrieve response:", r)
 
-wrapped_ct = ub64(r["ciphertext_b64"])
-wrapped_nonce = ub64(r["nonce_b64"])
+# wrapped_ct = ub64(r["ciphertext_b64"])
+# wrapped_nonce = ub64(r["nonce_b64"])
 
-aes2 = AESGCM(session_key)
-inner_recovered = aes2.decrypt(wrapped_nonce, wrapped_ct, b"")
+# aes2 = AESGCM(session_key)
+# inner_recovered = aes2.decrypt(wrapped_nonce, wrapped_ct, b"")
 
-assert inner_recovered == inner_ct
-print("Inner ciphertext matches ✔")
+# assert inner_recovered == inner_ct
+# print("Inner ciphertext matches ✔")
 
-# decrypt final plaintext
-final_plaintext = aes.decrypt(inner_nonce, inner_ct, b"")
-print("Final plaintext:", final_plaintext.decode())
+# # decrypt final plaintext
+# final_plaintext = aes.decrypt(inner_nonce, inner_ct, b"")
+# print("Final plaintext:", final_plaintext.decode())
