@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-import licenta.services.storage_service as StorageServiceInterface
+from licenta.services.storage_service import StorageServiceInterface
 
 
 SESSION_KEYS = {}
@@ -49,5 +49,6 @@ def handshake(inp: HandshakeInput) -> HandshakeOutput:
 def store(inp: StoreInput, storage_service: StorageServiceInterface) -> StoreOutput:
     return storage_service.store(inp)
 
-def retrieve(inp: RetrieveInput, store_service: StorageServiceInterface) -> RetrieveOutput:
-    return store_service.retrieve(inp)
+def retrieve(inp: RetrieveInput, storage_service: StorageServiceInterface) -> RetrieveOutput:
+    return storage_service.retrieve(inp)
+
