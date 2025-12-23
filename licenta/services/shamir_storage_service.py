@@ -51,7 +51,8 @@ class ShamirStorageService(StorageServiceInterface):
 
         # 5. Send shares to devices
         self.__send_shares_to_devices(shares, obj.id)
-
+        
+        # Need to get the id of the stored object
         return StoreOutput(object_id=str(obj.id))
             
         

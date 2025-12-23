@@ -1,27 +1,15 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from licenta.api import encrypt
-from dotenv import load_dotenv
-import os
-from sqlmodel import create_engine, Session
-from typing import Annotated
-
-load_dotenv()
-
-connect_args = {"check_same_thread": False}
-
-engine = create_engine(os.getenv("DATABASE_URL"), connect_args=connect_args)
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-        
-SessionDep = Annotated[Session, Depends(get_session)]
-
-app = FastAPI()
+from licenta.services.database_service import test_connection
+from contextlib import asynccontextmanager
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    test_connection()
+    yield
+    
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(encrypt.router, prefix="/encrypt", tags=["encrypt"])
