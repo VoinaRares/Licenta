@@ -3,7 +3,7 @@ from licenta.models.store_input import StoreInput
 from licenta.models.store_output import StoreOutput
 from licenta.models.retrieve_input import RetrieveInput
 from licenta.models.retrieve_output import RetrieveOutput
-from licenta.models.ciphertext_object import CipherTextObject
+from licenta.models.ciphertext_object import CipherText
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from sqlmodel import Session
@@ -40,17 +40,17 @@ class ShamirStorageService(StorageServiceInterface):
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
         # 3. Store ciphertext in DB
-        obj = CipherTextObject(cipherText=ciphertext.decode())
+        obj = CipherText(cipherText=ciphertext.decode())
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
 
         # 4. Split master secret
         secret_int = int.from_bytes(master_secret, "big")
-        shares = self.__create_shares(secret=secret_int)
+        shares = self._create_shares(secret=secret_int)
 
         # 5. Send shares to devices
-        self.__send_shares_to_devices(shares, obj.id)
+        self._send_shares_to_devices(shares, obj.id)
         
         # Need to get the id of the stored object
         return StoreOutput(object_id=str(obj.id))

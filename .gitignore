@@ -51,3 +51,5 @@ coverage.xml
 # FastAPI specific
 .pytest_cache/
 .hypothesis/
+
+licenta/__pycache__/
