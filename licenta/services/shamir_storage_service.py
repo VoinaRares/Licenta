@@ -10,6 +10,7 @@ from sqlmodel import Session
 import random
 import requests
 import secrets
+import base64
 from typing import List, Tuple
 from cryptography.fernet import Fernet
 
@@ -18,7 +19,7 @@ class ShamirStorageService(StorageServiceInterface):
     Storage service implementing Shamir's Secret Sharing scheme
     """
     def __init__(self, session: Session ,num_shares: int = 5, threshold: int = 3):
-        self.devices = ["http://device1link", "http://device2link"]
+        self.devices = ["http://10.0.3.151:8000", "http://device2link"]
         self.num_shares = num_shares
         self.threshold = threshold
         self.session = session
@@ -28,14 +29,15 @@ class ShamirStorageService(StorageServiceInterface):
         # 1. Generate master secret
         master_secret = secrets.token_bytes(32)
 
-        # 2. Derive Fernet key
-        fernet_key = HKDF(
+        # 2. Derive Fernet key (raw bytes) and encode to URL-safe base64 for Fernet
+        fernet_key_raw = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
             salt=None,
             info=b"fernet key",
         ).derive(master_secret)
 
+        fernet_key = base64.urlsafe_b64encode(fernet_key_raw)
         fernet = Fernet(fernet_key)
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
@@ -66,14 +68,22 @@ class ShamirStorageService(StorageServiceInterface):
         secret_int = self._reconstruct_secret(shares)
         master_secret = secret_int.to_bytes(32, "big")
 
-        fernet_key = HKDF(
+        fernet_key_raw = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
             salt=None,
             info=b"fernet key",
         ).derive(master_secret)
 
-        return RetrieveOutput(encryption_key=fernet_key)
+        fernet_key = base64.urlsafe_b64encode(fernet_key_raw)
+        # fetch ciphertext object
+        obj = self.session.get(CipherText, int(inp.object_id))
+        if obj is None:
+            raise ValueError("Object not found")
+
+        fernet = Fernet(fernet_key)
+        plaintext = fernet.decrypt(obj.cipherText.encode())
+        return RetrieveOutput(client_ciphertext_b64=plaintext.decode())
 
     
     # Helper methods
@@ -96,14 +106,17 @@ class ShamirStorageService(StorageServiceInterface):
         return shares
 
     
-    def _send_shares_to_devices(self, encryption_key: bytes):
-        secret = int.from_bytes(encryption_key, byteorder='big')
-        shares = self._create_shares(secret)
-
+    def _send_shares_to_devices(self, shares: List[Tuple[int, int]], object_id: int):
+        """
+        Send one share per device (up to number of devices). The payload includes the object id.
+        """
         for index, device_url in enumerate(self.devices):
+            if index >= len(shares):
+                break
             x, y = shares[index]
 
             payload = {
+                "object_id": object_id,
                 "share_id": index,
                 "x": x,
                 "y": str(y)
@@ -120,15 +133,15 @@ class ShamirStorageService(StorageServiceInterface):
                 print(f"Failed to store share on {device_url}: {e}")
     
     def _retrieve_shares_from_devices(self, inp: RetrieveInput) -> List[Tuple[int, int]]:
-        """Simulate retrieving shares from devices."""
+        """Simulate retrieving shares from devices by object_id."""
         retrieved_shares = []
         for device_url in self.devices:
             try:
-                # Simulate retrieving shares by making HTTP requests
-                response = requests.get(device_url, params={'share_id': inp.share_id})
+                response = requests.get(f"{device_url}/retrieve_share", params={'object_id': inp.object_id})
                 if response.status_code == 200:
                     share_data = response.json()
-                    retrieved_shares.append((share_data['share_id'], share_data['share_value']))
+                    # convert to ints
+                    retrieved_shares.append((int(share_data['x']), int(share_data['y'])))
             except requests.exceptions.RequestException as e:
                 print(f"Error retrieving from {device_url}: {e}")
         return retrieved_shares

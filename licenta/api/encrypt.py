@@ -24,4 +24,4 @@ def store(inp: StoreInput, storage_service: StorageServiceInterface = Depends(ge
 @router.get("/retrieve/{object_id}", response_model=RetrieveOutput)
 def retrieve(object_id: str, session_id: str, storage_service: StorageServiceInterface = Depends(get_storage_service)):
     inp = RetrieveInput(session_id=session_id, object_id=object_id)
-    return encryption_service.retrieve(inp)
+    return encryption_service.retrieve(inp, storage_service)
