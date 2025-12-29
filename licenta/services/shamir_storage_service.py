@@ -19,7 +19,9 @@ class ShamirStorageService(StorageServiceInterface):
     Storage service implementing Shamir's Secret Sharing scheme
     """
     def __init__(self, session: Session ,num_shares: int = 5, threshold: int = 3):
-        self.devices = ["http://10.0.3.151:8000"]
+        self.devices = ["http://10.0.3.101:8000", "http://10.0.3.102:8000",
+                        "http://10.0.3.103:8000", "http://10.0.3.104:8000",
+                        "http://10.0.3.105:8000"]
         self.num_shares = num_shares
         self.threshold = threshold
         self.session = session
