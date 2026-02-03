@@ -40,7 +40,7 @@ session_key = HKDF(
     algorithm=hashes.SHA256(),
     length=32,
     salt=None,
-    info=b"session-transport-key"
+    info=b"handshake session key"
 ).derive(shared)
 
 print("Session key:", session_key.hex())
@@ -55,10 +55,7 @@ print("Storing object...")
 
 upload = requests.post(f"{SERVER}/store", json={
     "session_id": session_id,
-    "client_ciphertext_b64": b64(inner_ct),
-    "client_nonce_b64": b64(inner_nonce),
-    "aad": "file=test",
-    "object_id": "obj-test-001"
+    "client_ciphertext_b64": b64(inner_ct)
 })
 upload.raise_for_status()
 udata = upload.json()
@@ -66,22 +63,18 @@ print("Store response:", udata)
 
 object_id = udata["object_id"]
 
-# # 3) Retrieve object
-# print("Retrieving…")
-# ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}")
-# ret.raise_for_status()
-# r = ret.json()
-# print("Retrieve response:", r)
+# 3) Retrieve object
+print("Retrieving…")
+ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}")
+ret.raise_for_status()
+r = ret.json()
+print("Retrieve response:", r)
 
-# wrapped_ct = ub64(r["ciphertext_b64"])
-# wrapped_nonce = ub64(r["nonce_b64"])
+retrieved_ct_b64 = r["client_ciphertext_b64"]
+retrieved_ct = ub64(retrieved_ct_b64)
 
-# aes2 = AESGCM(session_key)
-# inner_recovered = aes2.decrypt(wrapped_nonce, wrapped_ct, b"")
+aes2 = AESGCM(session_key)
+decrypted_plaintext = aes2.decrypt(inner_nonce, retrieved_ct, b"")
 
-# assert inner_recovered == inner_ct
-# print("Inner ciphertext matches ✔")
-
-# # decrypt final plaintext
-# final_plaintext = aes.decrypt(inner_nonce, inner_ct, b"")
-# print("Final plaintext:", final_plaintext.decode())
+assert decrypted_plaintext == plaintext
+print("✔ Decrypted plaintext matches original:", decrypted_plaintext.decode())
