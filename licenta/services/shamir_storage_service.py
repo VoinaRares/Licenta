@@ -7,7 +7,6 @@ from licenta.models.ciphertext_object import CipherText
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from sqlmodel import Session
-import random
 import requests
 import secrets
 import base64
@@ -62,10 +61,10 @@ class ShamirStorageService(StorageServiceInterface):
         
         
     def retrieve(self, inp: RetrieveInput) -> RetrieveOutput:
-        shares = self._retrieve_shares_from_devices(inp)
+        shares = self._retrieve_shares_from_devices(inp.object_id)
 
         if len(shares) < self.threshold:
-            return RetrieveOutput(error="Not enough shares")
+            raise ValueError(f"Not enough shares: got {len(shares)}, need {self.threshold}")
 
         secret_int = self._reconstruct_secret(shares)
         master_secret = secret_int.to_bytes(32, "big")
@@ -134,15 +133,14 @@ class ShamirStorageService(StorageServiceInterface):
             except requests.RequestException as e:
                 print(f"Failed to store share on {device_url}: {e}")
     
-    def _retrieve_shares_from_devices(self, inp: RetrieveInput) -> List[Tuple[int, int]]:
+    def _retrieve_shares_from_devices(self, object_id: int) -> List[Tuple[int, int]]:
         """Simulate retrieving shares from devices by object_id."""
         retrieved_shares = []
         for device_url in self.devices:
             try:
-                response = requests.get(f"{device_url}/retrieve_share", params={'object_id': inp.object_id})
+                response = requests.get(f"{device_url}/retrieve_share", params={'object_id': object_id})
                 if response.status_code == 200:
                     share_data = response.json()
-                    # convert to ints
                     retrieved_shares.append((int(share_data['x']), int(share_data['y'])))
             except requests.exceptions.RequestException as e:
                 print(f"Error retrieving from {device_url}: {e}")
