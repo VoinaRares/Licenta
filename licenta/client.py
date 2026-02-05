@@ -1,5 +1,3 @@
-# client.py (FINAL WORKING VERSION)
-
 import base64, requests, os
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF

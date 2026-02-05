@@ -27,8 +27,19 @@ def store_share(inp: StoreShareInput):
 @app.get("/retrieve_share")
 def retrieve_share(object_id: int):
     path = os.path.join(STORAGE_DIR, f"share_{object_id}.json")
-    if not os.path.exists(path):
-        return {"error": "Share not found"}
-    with open(path, "r") as f:
-        data = json.load(f)
-    return data
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+
+    for fname in os.listdir(STORAGE_DIR):
+        if not fname.endswith('.json'):
+            continue
+        try:
+            with open(os.path.join(STORAGE_DIR, fname), 'r') as f:
+                data = json.load(f)
+            if str(data.get('object_id', '')) == str(object_id):
+                return data
+        except Exception:
+            continue
+
+    return {"error": "Share not found"}

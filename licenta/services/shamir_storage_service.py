@@ -27,10 +27,8 @@ class ShamirStorageService(StorageServiceInterface):
         self.PRIME_FIELD = 2**521 - 1
     
     def store(self, inp: StoreInput) -> StoreOutput:
-        # 1. Generate master secret
         master_secret = secrets.token_bytes(32)
 
-        # 2. Derive Fernet key (raw bytes) and encode to URL-safe base64 for Fernet
         fernet_key_raw = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
@@ -42,20 +40,16 @@ class ShamirStorageService(StorageServiceInterface):
         fernet = Fernet(fernet_key)
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
-        # 3. Store ciphertext in DB
         obj = CipherText(cipherText=ciphertext.decode())
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
 
-        # 4. Split master secret
         secret_int = int.from_bytes(master_secret, "big")
         shares = self._create_shares(secret=secret_int)
 
-        # 5. Send shares to devices
         self._send_shares_to_devices(shares, obj.id)
         
-        # Need to get the id of the stored object
         return StoreOutput(object_id=str(obj.id))
             
         
@@ -77,7 +71,7 @@ class ShamirStorageService(StorageServiceInterface):
         ).derive(master_secret)
 
         fernet_key = base64.urlsafe_b64encode(fernet_key_raw)
-        # fetch ciphertext object
+
         obj = self.session.get(CipherText, int(inp.object_id))
         if obj is None:
             raise ValueError("Object not found")
