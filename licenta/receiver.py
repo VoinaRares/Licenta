@@ -43,3 +43,8 @@ def retrieve_share(object_id: int):
             continue
 
     return {"error": "Share not found"}
+
+
+@app.get("/health")
+def health():
+    return {"status":"ok"}

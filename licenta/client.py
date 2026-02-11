@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 SERVER = "http://127.0.0.1:8000/encrypt"
 
+API_KEY = "1wFGcECzElkN-qZpP_0X6AxNQ6zXEDou_e-e7LU3vUs"
+
 def b64(x: bytes) -> str:
     return base64.b64encode(x).decode()
 
@@ -20,7 +22,7 @@ client_pub = client_priv.public_key().public_bytes(
 )
 
 print("Sending handshake...")
-resp = requests.post(f"{SERVER}/handshake", json={
+resp = requests.post(f"{SERVER}/handshake", headers={"X-API-Key": API_KEY},json={
     "client_pubkey_b64": b64(client_pub)
 })
 resp.raise_for_status()
@@ -51,7 +53,7 @@ inner_ct = aes.encrypt(inner_nonce, plaintext, b"")
 
 print("Storing object...")
 
-upload = requests.post(f"{SERVER}/store", json={
+upload = requests.post(f"{SERVER}/store", headers={"X-API-Key": API_KEY},json={
     "session_id": session_id,
     "client_ciphertext_b64": b64(inner_ct)
 })
@@ -63,7 +65,7 @@ object_id = udata["object_id"]
 
 # 3) Retrieve object
 print("Retrieving…")
-ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}")
+ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}", headers={"X-API-Key": API_KEY})
 ret.raise_for_status()
 r = ret.json()
 print("Retrieve response:", r)

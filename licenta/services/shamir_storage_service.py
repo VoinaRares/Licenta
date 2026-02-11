@@ -12,21 +12,22 @@ import secrets
 import base64
 from typing import List, Tuple
 from cryptography.fernet import Fernet
+from fastapi import HTTPException, status
+from itertools import combinations
 
 class ShamirStorageService(StorageServiceInterface):
     """
     Storage service implementing Shamir's Secret Sharing scheme
     """
     def __init__(self, session: Session ,num_shares: int = 5, threshold: int = 3):
-        self.devices = ["http://10.0.3.101:8000", "http://10.0.3.102:8000",
-                        "http://10.0.3.103:8000", "http://10.0.3.104:8000",
-                        "http://10.0.3.105:8000"]
+        self.devices = ["http://localhost:8080/101","http://localhost:8080/102","http://localhost:8080/103",
+                        "http://localhost:8080/104","http://localhost:8080/105"]
         self.num_shares = num_shares
         self.threshold = threshold
         self.session = session
         self.PRIME_FIELD = 2**521 - 1
     
-    def store(self, inp: StoreInput) -> StoreOutput:
+    def store(self, inp: StoreInput, user_id: int) -> StoreOutput:
         master_secret = secrets.token_bytes(32)
 
         fernet_key_raw = HKDF(
@@ -40,7 +41,7 @@ class ShamirStorageService(StorageServiceInterface):
         fernet = Fernet(fernet_key)
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
-        obj = CipherText(cipherText=ciphertext.decode())
+        obj = CipherText(cipherText=ciphertext.decode(), user_id=user_id)
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
@@ -54,13 +55,21 @@ class ShamirStorageService(StorageServiceInterface):
             
         
         
-    def retrieve(self, inp: RetrieveInput) -> RetrieveOutput:
-        shares = self._retrieve_shares_from_devices(inp.object_id)
+    def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
+        obj_id = int(inp.object_id)
+        obj = self.session.get(CipherText, obj_id)
+        if obj is None:
+            raise ValueError("Object not found")
+
+        if obj.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: user has no access to this object")
+
+        shares = self._retrieve_shares_from_devices(obj_id)
 
         if len(shares) < self.threshold:
             raise ValueError(f"Not enough shares: got {len(shares)}, need {self.threshold}")
 
-        secret_int = self._reconstruct_secret(shares)
+        secret_int = self._byzantine_consensus(shares)
         master_secret = secret_int.to_bytes(32, "big")
 
         fernet_key_raw = HKDF(
@@ -71,10 +80,6 @@ class ShamirStorageService(StorageServiceInterface):
         ).derive(master_secret)
 
         fernet_key = base64.urlsafe_b64encode(fernet_key_raw)
-
-        obj = self.session.get(CipherText, int(inp.object_id))
-        if obj is None:
-            raise ValueError("Object not found")
 
         fernet = Fernet(fernet_key)
         plaintext = fernet.decrypt(obj.cipherText.encode())
@@ -141,6 +146,9 @@ class ShamirStorageService(StorageServiceInterface):
         return retrieved_shares
     
     def _reconstruct_secret(self, shares: list[tuple[int, int]]) -> int:
+        """
+        Reconstruct the secret from the shares using Lagrange interpolation.
+        """
         secret = 0
 
         for i, (xi, yi) in enumerate(shares):
@@ -155,3 +163,21 @@ class ShamirStorageService(StorageServiceInterface):
             lagrange_coeff = numerator * pow(denominator, -1, self.PRIME_FIELD)
             secret = (secret + yi * lagrange_coeff) % self.PRIME_FIELD
         return secret
+
+
+    def _byzantine_consensus(self, shares: list[tuple[int, int]] ) -> int:
+        """
+        Does a Byzantine consensus on the shares to filter out any potentially corrupted shares.
+        Tries all combinations of shares of size threshold. Reconstructs the secret for each combination.
+        Returns the most common secret among the combinations. 
+        """
+        secret_count: dict[int, int] = {}
+        for comb in combinations(shares, self.threshold):
+            secret = self._reconstruct_secret(list(comb))
+            secret_count[secret] = secret_count.get(secret, 0) + 1
+            
+        if secret_count:
+            most_common_secret = max(secret_count, key=secret_count.get)
+            return most_common_secret
+            
+        

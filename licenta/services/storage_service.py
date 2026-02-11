@@ -7,11 +7,11 @@ from licenta.models.retrieve_output import RetrieveOutput
 class StorageServiceInterface(ABC):
     
     @abstractmethod
-    def store(self, inp: StoreInput) -> StoreOutput:
+    def store(self, inp: StoreInput, user_id: int) -> StoreOutput:
         pass
     
     @abstractmethod
-    def retrieve(self, inp: RetrieveInput) -> RetrieveOutput:
+    def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
         pass
 
     
