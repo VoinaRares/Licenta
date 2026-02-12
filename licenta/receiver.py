@@ -6,6 +6,7 @@ import os
 app = FastAPI()
 
 class StoreShareInput(BaseModel):
+    node_id: int
     object_id: int
     share_id: int
     x: int
