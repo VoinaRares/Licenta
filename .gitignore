@@ -37,6 +37,7 @@ var/
 # Logs
 *.log
 logs/
+*.pem
 
 # Coverage reports
 htmlcov/
