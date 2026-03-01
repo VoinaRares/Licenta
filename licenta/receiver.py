@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 import base64
 from datetime import datetime
+from typing import Optional
 
 app = FastAPI()
 
@@ -92,7 +93,7 @@ def is_unlocked() -> bool:
 
         expiry = datetime.fromisoformat(token_payload["expiry"])
 
-        if datetime.utcnow() > expiry:
+        if datetime.now(datetime.timezone.utc) > expiry:
             return False
 
         return token_payload.get("unlock", False)
@@ -114,25 +115,29 @@ def store_share(inp: SignedShareInput):
     return {"status": "stored"}
 
 @app.get("/retrieve_share")
-def retrieve_share(object_id: int):
+def retrieve_share(object_id: int, needs_verification: Optional[bool] = False):
 
     if not is_unlocked():
         return {"error": "Node locked"}, 403
+    
+    #Needs the GUI implementation for now
+    if needs_verification:
+        pass
+    else: # Need to implement the verification process via the file
+        path = os.path.join(STORAGE_DIR, f"share_{object_id}.json")
 
-    path = os.path.join(STORAGE_DIR, f"share_{object_id}.json")
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
 
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            data = json.load(f)
+            signature = sign_payload(data, "private_key.pem")
 
-        signature = sign_payload(data, "private_key.pem")
+            return {
+                "payload": data,
+                "signature": signature
+            }
 
-        return {
-            "payload": data,
-            "signature": signature
-        }
-
-    return {"error": "Share not found"}
+        return {"error": "Share not found"}
 
 @app.get("/health")
 def health():

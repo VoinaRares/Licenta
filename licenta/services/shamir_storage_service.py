@@ -55,7 +55,7 @@ class ShamirStorageService(StorageServiceInterface):
         fernet = Fernet(fernet_key)
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
-        obj = CipherText(cipherText=ciphertext.decode(), user_id=user_id)
+        obj = CipherText(cipherText=ciphertext.decode(), user_id=user_id, needs_verifcation=inp.needs_verification)
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
@@ -80,7 +80,7 @@ class ShamirStorageService(StorageServiceInterface):
                 detail="Forbidden"
             )
 
-        shares = self._retrieve_shares_from_devices(obj_id)
+        shares = self._retrieve_shares_from_devices(object_id=obj_id, needs_verification=obj.needs_verifcation)
 
         if len(shares) < self.threshold:
             raise ValueError("Not enough shares")
@@ -169,7 +169,7 @@ class ShamirStorageService(StorageServiceInterface):
             logger.error(f"Signature verification failed for node {node_id}: {e}")
             return False
 
-    def _retrieve_shares_from_devices(self, object_id: int) -> List[Tuple[int, int]]:
+    def _retrieve_shares_from_devices(self, object_id: int, needs_verification: bool) -> List[Tuple[int, int]]:
         retrieved_shares = []
 
         for device in self.devices:
@@ -179,7 +179,7 @@ class ShamirStorageService(StorageServiceInterface):
             try:
                 response = requests.get(
                     f"{device_url}/retrieve_share",
-                    params={'object_id': object_id}
+                    params={'object_id': object_id, 'needs_verification': needs_verification},
                 )
 
                 if response.status_code != 200:
