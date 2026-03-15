@@ -55,7 +55,7 @@ class ShamirStorageService(StorageServiceInterface):
         fernet = Fernet(fernet_key)
         ciphertext = fernet.encrypt(inp.client_ciphertext_b64.encode())
 
-        obj = CipherText(cipherText=ciphertext.decode(), user_id=user_id, needs_verifcation=inp.needs_verification)
+        obj = CipherText(cipherText=ciphertext.decode(), user_id=user_id, needs_verification=inp.needs_verification)
         self.session.add(obj)
         self.session.commit()
         self.session.refresh(obj)
@@ -80,7 +80,7 @@ class ShamirStorageService(StorageServiceInterface):
                 detail="Forbidden"
             )
 
-        shares = self._retrieve_shares_from_devices(object_id=obj_id, needs_verification=obj.needs_verifcation)
+        shares = self._retrieve_shares_from_devices(object_id=obj_id, needs_verification=obj.needs_verification)
 
         if len(shares) < self.threshold:
             raise ValueError("Not enough shares")
@@ -143,7 +143,6 @@ class ShamirStorageService(StorageServiceInterface):
 
     def _verify_node_signature(self, payload: dict, signature_b64: str, node_id: int) -> bool:
         try:
-            # Retrieve node's public key from database
             statement = select(PublicKey).where(PublicKey.node_id == node_id)
             public_key_obj = self.session.exec(statement).first()
             

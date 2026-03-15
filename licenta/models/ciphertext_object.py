@@ -7,4 +7,4 @@ class CipherText(SQLModel, table=True):
     id : int | None = Field(default=None, primary_key=True)
     cipherText: str
     user_id: int = Field(foreign_key="users.id")
-    needs_verifcation: bool = Field(default=False)
+    needs_verification: bool = Field(default=False)

@@ -55,7 +55,10 @@ print("Storing object...")
 
 upload = requests.post(f"{SERVER}/store", headers={"X-API-Key": API_KEY},json={
     "session_id": session_id,
-    "client_ciphertext_b64": b64(inner_ct)
+    "client_ciphertext_b64": b64(inner_ct),
+    # ask the server to mark this object as needing verification before shares
+    # can be released by storage nodes
+    "needs_verification": True
 })
 upload.raise_for_status()
 udata = upload.json()
@@ -65,7 +68,12 @@ object_id = udata["object_id"]
 
 # 3) Retrieve object
 print("Retrieving…")
-ret = requests.get(f"{SERVER}/retrieve/{object_id}?session_id={session_id}", headers={"X-API-Key": API_KEY})
+# when retrieving, include the same query parameter so that the node
+# knows to enforce object‑level verification on its side
+ret = requests.get(
+    f"{SERVER}/retrieve/{object_id}?session_id={session_id}",
+    headers={"X-API-Key": API_KEY}
+)
 ret.raise_for_status()
 r = ret.json()
 print("Retrieve response:", r)
