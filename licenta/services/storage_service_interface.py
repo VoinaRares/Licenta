@@ -13,5 +13,7 @@ class StorageServiceInterface(ABC):
     @abstractmethod
     def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
         pass
-
     
+    @abstractmethod
+    def rotate_keys_for_user(self, user_id: int) -> dict:
+        pass

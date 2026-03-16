@@ -29,7 +29,6 @@ def test_reconstruct_secret_insufficient_shares():
     assert reconstructed_secret != secret
     print ("Reconstructed secret with insufficient shares:", reconstructed_secret)
     
-    
 test_create_shares()
 test_reconstruct_secret()
 test_reconstruct_secret_insufficient_shares()

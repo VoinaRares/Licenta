@@ -8,3 +8,5 @@ class CipherText(SQLModel, table=True):
     cipherText: str
     user_id: int = Field(foreign_key="users.id")
     needs_verification: bool = Field(default=False)
+    # Incremented each time the encryption key is rotated.
+    key_version: int = Field(default=1)

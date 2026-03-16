@@ -1,4 +1,4 @@
-from licenta.services.storage_service import StorageServiceInterface
+from licenta.services.storage_service_interface import StorageServiceInterface
 from licenta.models.store_input import StoreInput
 from licenta.models.store_output import StoreOutput
 from licenta.models.retrieve_input import RetrieveInput
@@ -63,9 +63,28 @@ class ShamirStorageService(StorageServiceInterface):
         secret_int = int.from_bytes(master_secret, "big")
         shares = self._create_shares(secret=secret_int)
 
-        self._send_shares_to_devices(shares, obj.id)
+        success_count = self._send_shares_to_devices(shares, obj.id)
+        if success_count < self.threshold:
+            self.session.delete(obj)
+            self.session.commit()
+            raise ValueError(f"Failed to distribute shares to enough nodes (success={success_count}, threshold={self.threshold})")
 
         return StoreOutput(object_id=str(obj.id))
+
+    def rotate_all_objects(self) -> dict:
+        """Rotate keys for every CipherText object in the database."""
+        statement = select(CipherText)
+        objects = self.session.exec(statement).all()
+
+        results = {"rotated": [], "failed": []}
+        for obj in objects:
+            try:
+                self.rotate_key_for_object(obj.id, obj.user_id)
+                results["rotated"].append(obj.id)
+            except Exception as e:
+                results["failed"].append({"object_id": obj.id, "error": str(e)})
+
+        return results
 
     def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
         obj_id = int(inp.object_id)
@@ -102,7 +121,83 @@ class ShamirStorageService(StorageServiceInterface):
 
         return RetrieveOutput(client_ciphertext_b64=plaintext.decode())
 
-    def _send_shares_to_devices(self, shares: List[Tuple[int, int]], object_id: int):
+    def _derive_fernet_key(self, master_secret: bytes) -> bytes:
+        fernet_key_raw = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b"fernet key",
+        ).derive(master_secret)
+
+        return base64.urlsafe_b64encode(fernet_key_raw)
+
+    def _encrypt_plaintext(self, plaintext_b64: str, master_secret: bytes) -> str:
+        fernet_key = self._derive_fernet_key(master_secret)
+        fernet = Fernet(fernet_key)
+        return fernet.encrypt(plaintext_b64.encode()).decode()
+
+    def rotate_key_for_object(self, object_id: int, user_id: int) -> bool:
+        """Rotate the encryption key for a single CipherText object.
+
+        The object is only updated in the database if enough shares can be stored on the
+        Shamir nodes (>= threshold).
+        """
+        obj = self.session.get(CipherText, object_id)
+
+        if obj is None:
+            raise ValueError("Object not found")
+
+        if obj.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden"
+            )
+
+        retrieved = self.retrieve(RetrieveInput(session_id="", object_id=str(object_id)), user_id)
+        plaintext_b64 = retrieved.client_ciphertext_b64
+
+        new_master_secret = secrets.token_bytes(32)
+        new_ciphertext = self._encrypt_plaintext(plaintext_b64, new_master_secret)
+
+        new_secret_int = int.from_bytes(new_master_secret, "big")
+        new_shares = self._create_shares(secret=new_secret_int)
+        success_count = self._send_shares_to_devices(new_shares, object_id)
+
+        if success_count < self.threshold:
+            raise ValueError(f"Not enough shares stored to rotate key (success={success_count}, threshold={self.threshold})")
+
+        obj.cipherText = new_ciphertext
+        if hasattr(obj, "key_version"):
+            obj.key_version = (obj.key_version or 1) + 1
+
+        self.session.add(obj)
+        self.session.commit()
+        self.session.refresh(obj)
+
+        return True
+
+    def rotate_keys_for_user(self, user_id: int) -> dict:
+        """Rotate the key for *all* CipherText objects belonging to the given user."""
+        statement = select(CipherText).where(CipherText.user_id == user_id)
+        objects = self.session.exec(statement).all()
+
+        results = {"rotated": [], "failed": []}
+        for obj in objects:
+            try:
+                self.rotate_key_for_object(obj.id, user_id)
+                results["rotated"].append(obj.id)
+            except Exception as e:
+                results["failed"].append({"object_id": obj.id, "error": str(e)})
+
+        return results
+
+    def _send_shares_to_devices(self, shares: List[Tuple[int, int]], object_id: int) -> int:
+        """Send each share to its corresponding device.
+
+        Returns the number of devices that successfully stored the share.
+        """
+        success_count = 0
+
         for index, device in enumerate(self.devices):
             if index >= len(shares):
                 break
@@ -132,14 +227,14 @@ class ShamirStorageService(StorageServiceInterface):
                     timeout=5
                 )
                 response.raise_for_status()
-                print("Sending to node:", node_id)
-                print(payload)
-                print(signature)
-                print(response.status_code)
-                print(response.text)
 
+                success_count += 1
+
+                logger.debug("Stored share on node %s: %s", node_id, payload)
             except requests.RequestException as e:
-                print(f"Failed storing share on {device['url']}: {e}")
+                logger.warning("Failed storing share on %s: %s", device["url"], e)
+
+        return success_count
 
     def _verify_node_signature(self, payload: dict, signature_b64: str, node_id: int) -> bool:
         try:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from licenta.api.auth import get_current_user
 from licenta.models.user import User
 from licenta.models.handshake_output import HandshakeOutput
@@ -8,7 +8,7 @@ from licenta.models.store_output import StoreOutput
 from licenta.models.retrieve_input import RetrieveInput
 from licenta.models.retrieve_output import RetrieveOutput
 from licenta.services import encryption_service
-from licenta.services.storage_service import StorageServiceInterface
+from licenta.services.storage_service_interface import StorageServiceInterface
 from licenta.services.storage_service_factory import get_storage_service
 
 router = APIRouter(
@@ -28,3 +28,8 @@ def store(inp: StoreInput, storage_service: StorageServiceInterface = Depends(ge
 def retrieve(object_id: str, session_id: str, storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
     inp = RetrieveInput(session_id=session_id, object_id=object_id)
     return encryption_service.retrieve(inp, storage_service, current_user.id)
+
+
+@router.post("/rotate")
+def rotate_keys(storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
+    return storage_service.rotate_keys_for_user(current_user.id)
