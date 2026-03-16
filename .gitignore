@@ -55,3 +55,4 @@ coverage.xml
 
 licenta/__pycache__/
 
+*.pyc
