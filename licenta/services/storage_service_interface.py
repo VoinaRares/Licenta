@@ -5,15 +5,15 @@ from licenta.models.retrieve_input import RetrieveInput
 from licenta.models.retrieve_output import RetrieveOutput
 
 class StorageServiceInterface(ABC):
-    
+
     @abstractmethod
-    def store(self, inp: StoreInput, user_id: int) -> StoreOutput:
+    async def store(self, inp: StoreInput, user_id: int) -> StoreOutput:
         pass
-    
+
     @abstractmethod
-    def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
+    async def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:
         pass
-    
+
     @abstractmethod
-    def rotate_keys_for_user(self, user_id: int) -> dict:
+    async def rotate_keys_for_user(self, user_id: int) -> dict:
         pass

@@ -9,3 +9,4 @@ class CipherText(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id")
     needs_verification: bool = Field(default=False)
     key_version: int = Field(default=1)
+    is_rotating: bool = Field(default=False)

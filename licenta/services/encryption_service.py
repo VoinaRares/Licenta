@@ -46,9 +46,9 @@ def handshake(inp: HandshakeInput) -> HandshakeOutput:
     )
 
 
-def store(inp: StoreInput, storage_service: StorageServiceInterface, user_id: int) -> StoreOutput:
-    return storage_service.store(inp, user_id)
+async def store(inp: StoreInput, storage_service: StorageServiceInterface, user_id: int) -> StoreOutput:
+    return await storage_service.store(inp, user_id)
 
-def retrieve(inp: RetrieveInput, storage_service: StorageServiceInterface, user_id: int) -> RetrieveOutput:
-    return storage_service.retrieve(inp, user_id)
+async def retrieve(inp: RetrieveInput, storage_service: StorageServiceInterface, user_id: int) -> RetrieveOutput:
+    return await storage_service.retrieve(inp, user_id)
 

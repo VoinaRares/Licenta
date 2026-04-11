@@ -22,7 +22,7 @@ async def _rotation_loop(interval_seconds: int):
 
             with Session(engine) as session:
                 service = ShamirStorageService(session=session)
-                results = service.rotate_all_objects()
+                results = await service.rotate_all_objects()
                 logger.info("Key rotation run complete: %s", results)
         except Exception:
             logger.exception("Periodic key rotation failed")

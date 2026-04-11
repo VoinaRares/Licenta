@@ -58,7 +58,7 @@ upload = requests.post(f"{SERVER}/store", headers={"X-API-Key": API_KEY},json={
     "client_ciphertext_b64": b64(inner_ct),
     # ask the server to mark this object as needing verification before shares
     # can be released by storage nodes
-    "needs_verification": True
+    "needs_verification": False
 })
 upload.raise_for_status()
 udata = upload.json()

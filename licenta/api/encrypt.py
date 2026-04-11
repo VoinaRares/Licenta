@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from licenta.api.auth import get_current_user
 from licenta.models.user import User
 from licenta.models.handshake_output import HandshakeOutput
@@ -21,15 +21,15 @@ def handshake(inp: HandshakeInput):
     return encryption_service.handshake(inp)
 
 @router.post("/store", response_model=StoreOutput)
-def store(inp: StoreInput, storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
-    return encryption_service.store(inp, storage_service, current_user.id)
+async def store(inp: StoreInput, storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
+    return await encryption_service.store(inp, storage_service, current_user.id)
 
 @router.get("/retrieve/{object_id}", response_model=RetrieveOutput)
-def retrieve(object_id: str, session_id: str, storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
+async def retrieve(object_id: str, session_id: str, storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
     inp = RetrieveInput(session_id=session_id, object_id=object_id)
-    return encryption_service.retrieve(inp, storage_service, current_user.id)
+    return await encryption_service.retrieve(inp, storage_service, current_user.id)
 
 
 @router.post("/rotate")
-def rotate_keys(storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
-    return storage_service.rotate_keys_for_user(current_user.id)
+async def rotate_keys(storage_service: StorageServiceInterface = Depends(get_storage_service), current_user: User = Depends(get_current_user)):
+    return await storage_service.rotate_keys_for_user(current_user.id)
