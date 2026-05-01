@@ -1,7 +1,7 @@
 import base64, requests, os
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 SERVER = "http://127.0.0.1:8000/encrypt"
@@ -16,21 +16,13 @@ def ub64(s: str) -> bytes:
 
 # 1) Generate client keypair
 client_priv = x25519.X25519PrivateKey.generate()
-client_pub = client_priv.public_key().public_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PublicFormat.Raw
-)
 
 print("Sending handshake...")
-resp = requests.post(f"{SERVER}/handshake", headers={"X-API-Key": API_KEY},json={
-    "client_pubkey_b64": b64(client_pub)
-})
+resp = requests.get(f"{SERVER}/handshake", headers={"X-API-Key": API_KEY})
 resp.raise_for_status()
 
 data = resp.json()
-session_id = data["session_id"]
 server_pub_b64 = data["server_pubkey_b64"]
-print("Session ID:", session_id)
 
 # derive session key
 server_pub = x25519.X25519PublicKey.from_public_bytes(ub64(server_pub_b64))
@@ -54,10 +46,7 @@ inner_ct = aes.encrypt(inner_nonce, plaintext, b"")
 print("Storing object...")
 
 upload = requests.post(f"{SERVER}/store", headers={"X-API-Key": API_KEY},json={
-    "session_id": session_id,
     "client_ciphertext_b64": b64(inner_ct),
-    # ask the server to mark this object as needing verification before shares
-    # can be released by storage nodes
     "needs_verification": False
 })
 upload.raise_for_status()
@@ -68,10 +57,8 @@ object_id = udata["object_id"]
 
 # 3) Retrieve object
 print("Retrieving…")
-# when retrieving, include the same query parameter so that the node
-# knows to enforce object‑level verification on its side
 ret = requests.get(
-    f"{SERVER}/retrieve/{object_id}?session_id={session_id}",
+    f"{SERVER}/retrieve/{object_id}",
     headers={"X-API-Key": API_KEY}
 )
 ret.raise_for_status()
