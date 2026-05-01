@@ -16,11 +16,15 @@ import httpx
 import json
 import secrets
 import base64
-from typing import List, Tuple
+import time
+from typing import List, Optional, Tuple
 from cryptography.fernet import Fernet
 from fastapi import HTTPException, status
 from itertools import combinations
 import logging
+
+from licenta.services.database_service import engine
+from licenta.services.log_service import write_node_log
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,7 @@ class ShamirStorageService(StorageServiceInterface):
         secret_int = int.from_bytes(master_secret, "big")
         shares = self._create_shares(secret=secret_int)
 
-        success_count = await self._send_shares_to_devices(shares, obj.id)
+        success_count = await self._send_shares_to_devices(shares, obj.id, user_id=user_id)
         if success_count < self.threshold:
             self.session.delete(obj)
             self.session.commit()
@@ -123,7 +127,7 @@ class ShamirStorageService(StorageServiceInterface):
         # change and we will detect the inconsistency below.
         version_before = obj.key_version
 
-        shares = await self._retrieve_shares_from_devices(object_id=obj_id, needs_verification=obj.needs_verification)
+        shares = await self._retrieve_shares_from_devices(object_id=obj_id, needs_verification=obj.needs_verification, user_id=user_id)
 
         # Re-read the object from the database so that cipherText and key_version
         # reflect any rotation that may have committed during the await above.
@@ -209,7 +213,7 @@ class ShamirStorageService(StorageServiceInterface):
             # Retrieve shares bypassing needs_verification: this is an internal
             # system operation authorised by the server's own RSA signature, not
             # a user-initiated access, so the user-level unlock layer does not apply.
-            old_shares = await self._retrieve_shares_from_devices(object_id=object_id, needs_verification=False)
+            old_shares = await self._retrieve_shares_from_devices(object_id=object_id, needs_verification=False, user_id=user_id)
 
             if len(old_shares) < self.threshold:
                 raise ValueError(
@@ -234,13 +238,13 @@ class ShamirStorageService(StorageServiceInterface):
 
             # Require ALL nodes to accept new shares to prevent stale shares
             # from corrupting future Byzantine consensus votes.
-            success_count = await self._send_shares_to_devices(new_shares, object_id)
+            success_count = await self._send_shares_to_devices(new_shares, object_id, user_id=user_id)
 
             if success_count < self.num_shares:
                 # Some nodes were overwritten with new shares before the failure.
                 # Restore the cached old shares so that the node state stays
                 # consistent with the old ciphertext that remains in the database.
-                restore_count = await self._restore_old_shares(old_shares, object_id)
+                restore_count = await self._restore_old_shares(old_shares, object_id, user_id=user_id)
                 logger.error(
                     "Key rotation aborted for object %s: %d/%d nodes accepted new shares. "
                     "Restored %d/%d old shares.",
@@ -290,7 +294,7 @@ class ShamirStorageService(StorageServiceInterface):
 
         return results
 
-    async def _send_shares_to_devices(self, shares: List[Tuple[int, int]], object_id: int) -> int:
+    async def _send_shares_to_devices(self, shares: List[Tuple[int, int]], object_id: int, user_id: Optional[int] = None) -> int:
         """Send each share to its corresponding device.
 
         Returns the number of devices that successfully stored the share.
@@ -316,11 +320,11 @@ class ShamirStorageService(StorageServiceInterface):
                 }
 
                 signature = self._sign_payload(payload)
+                signed_payload = {"payload": payload, "signature": signature}
 
-                signed_payload = {
-                    "payload": payload,
-                    "signature": signature
-                }
+                start = time.monotonic()
+                status_code = 0
+                error_details = None
 
                 try:
                     response = await client.post(
@@ -328,17 +332,36 @@ class ShamirStorageService(StorageServiceInterface):
                         json=signed_payload,
                         timeout=5.0
                     )
+                    status_code = response.status_code
                     response.raise_for_status()
-
                     success_count += 1
                     logger.debug("Stored share on node %s: %s", node_id, payload)
-
-                except httpx.HTTPError as e:
+                except httpx.HTTPStatusError as e:
+                    error_details = str(e)
                     logger.warning("Failed storing share on %s: %s", device["url"], e)
+                except httpx.HTTPError as e:
+                    error_details = str(e)
+                    logger.warning("Failed storing share on %s: %s", device["url"], e)
+
+                duration_ms = round((time.monotonic() - start) * 1000, 2)
+                try:
+                    with Session(engine) as log_session:
+                        write_node_log(
+                            session=log_session,
+                            node_id=node_id,
+                            action="store_share",
+                            method="POST",
+                            status_code=status_code,
+                            user_id=user_id,
+                            duration_ms=duration_ms,
+                            error_details=error_details,
+                        )
+                except Exception:
+                    logger.exception("Failed to write node request log for node %s", node_id)
 
         return success_count
 
-    async def _restore_old_shares(self, old_shares: List[Tuple[int, int]], object_id: int) -> int:
+    async def _restore_old_shares(self, old_shares: List[Tuple[int, int]], object_id: int, user_id: Optional[int] = None) -> int:
         """Re-send old shares back to their original nodes after a failed rotation.
 
         Maps each share to its node by x value (x=1 → devices[0], x=2 → devices[1], …),
@@ -369,18 +392,42 @@ class ShamirStorageService(StorageServiceInterface):
 
                 signature = self._sign_payload(payload)
 
+                start = time.monotonic()
+                status_code = 0
+                error_details = None
+
                 try:
                     response = await client.post(
                         f"{device['url']}/store_share",
                         json={"payload": payload, "signature": signature},
                         timeout=5.0
                     )
+                    status_code = response.status_code
                     response.raise_for_status()
                     success_count += 1
                     logger.debug("Restored old share to node %s for object %s", node_id, object_id)
-
-                except httpx.HTTPError as e:
+                except httpx.HTTPStatusError as e:
+                    error_details = str(e)
                     logger.warning("Failed restoring old share to %s: %s", device["url"], e)
+                except httpx.HTTPError as e:
+                    error_details = str(e)
+                    logger.warning("Failed restoring old share to %s: %s", device["url"], e)
+
+                duration_ms = round((time.monotonic() - start) * 1000, 2)
+                try:
+                    with Session(engine) as log_session:
+                        write_node_log(
+                            session=log_session,
+                            node_id=node_id,
+                            action="restore_share",
+                            method="POST",
+                            status_code=status_code,
+                            user_id=user_id,
+                            duration_ms=duration_ms,
+                            error_details=error_details,
+                        )
+                except Exception:
+                    logger.exception("Failed to write node request log for node %s", node_id)
 
         return success_count
 
@@ -411,13 +458,18 @@ class ShamirStorageService(StorageServiceInterface):
             logger.error("Signature verification failed for node %s: %s", node_id, e)
             return False
 
-    async def _retrieve_shares_from_devices(self, object_id: int, needs_verification: bool) -> List[Tuple[int, int]]:
+    async def _retrieve_shares_from_devices(self, object_id: int, needs_verification: bool, user_id: Optional[int] = None) -> List[Tuple[int, int]]:
         retrieved_shares = []
 
         async with httpx.AsyncClient() as client:
             for device in self.devices:
                 device_url = device["url"]
                 node_id = device["node_id"]
+
+                start = time.monotonic()
+                status_code = 0
+                error_details = None
+                response = None
 
                 # Separate the HTTP transport error from response-parsing errors so
                 # that a misbehaving node returning malformed data does not silently
@@ -428,11 +480,28 @@ class ShamirStorageService(StorageServiceInterface):
                         params={"object_id": object_id, "needs_verification": needs_verification},
                         timeout=5.0
                     )
+                    status_code = response.status_code
                 except httpx.HTTPError as e:
+                    error_details = str(e)
                     logger.warning("Failed retrieving share from %s: %s", device_url, e)
-                    continue
 
-                if response.status_code != 200:
+                duration_ms = round((time.monotonic() - start) * 1000, 2)
+                try:
+                    with Session(engine) as log_session:
+                        write_node_log(
+                            session=log_session,
+                            node_id=node_id,
+                            action="retrieve_share",
+                            method="GET",
+                            status_code=status_code,
+                            user_id=user_id,
+                            duration_ms=duration_ms,
+                            error_details=error_details,
+                        )
+                except Exception:
+                    logger.exception("Failed to write node request log for node %s", node_id)
+
+                if response is None or response.status_code != 200:
                     continue
 
                 try:

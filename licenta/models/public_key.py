@@ -1,5 +1,4 @@
-from typing import Annotated
-from sqlmodel import Field, Session, SQLModel
+from sqlmodel import Field, SQLModel
 
 
 class PublicKey(SQLModel, table=True):
@@ -7,5 +6,5 @@ class PublicKey(SQLModel, table=True):
     
     key_id: int | None = Field(default=None, primary_key=True)
     key: str
-    node_id: int
+    node_id: int = Field(unique=True)
     
