@@ -38,6 +38,7 @@ var/
 *.log
 logs/
 *.pem
+*.token
 
 # Coverage reports
 htmlcov/

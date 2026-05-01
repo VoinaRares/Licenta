@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 SERVER = "http://127.0.0.1:8000/encrypt"
 
-API_KEY = "1wFGcECzElkN-qZpP_0X6AxNQ6zXEDou_e-e7LU3vUs"
+API_KEY = "_2icCc09A9MC_BSKsC-sa1BvlxmjlU-tfCuJ98Ru380"
 
 def b64(x: bytes) -> str:
     return base64.b64encode(x).decode()

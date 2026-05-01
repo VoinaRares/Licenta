@@ -1,11 +1,12 @@
-from typing import Annotated
-from sqlmodel import Field, Session, SQLModel
+from sqlalchemy import Column, LargeBinary
+from sqlmodel import Field, SQLModel
+
 
 class CipherText(SQLModel, table=True):
-    __tablename__="cipher_texts"
-    
-    id : int | None = Field(default=None, primary_key=True)
-    cipherText: str
+    __tablename__ = "cipher_texts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    ciphertext: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
     user_id: int = Field(foreign_key="users.id")
     needs_verification: bool = Field(default=False)
     key_version: int = Field(default=1)

@@ -6,8 +6,11 @@ from sqlmodel import SQLModel
 
 load_dotenv()
 
+_url = os.getenv("DATABASE_URL")
+if not _url:
+    raise SystemExit("DATABASE_URL is not set. Add it to your .env file or environment.")
 
-engine = create_engine(os.getenv("DATABASE_URL"), echo=True)
+engine = create_engine(_url)
 
 def get_session():
     with Session(engine) as session:

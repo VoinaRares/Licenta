@@ -1,11 +1,12 @@
-import asyncio
 import logging
 import os
 import time
 
+import httpx
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -13,27 +14,11 @@ from starlette.requests import Request
 from licenta.api import auth, encrypt
 from licenta.services.database_service import engine, test_connection, create_db_and_tables
 from licenta.services.log_service import write_api_log
-from licenta.services.shamir_storage_service import ShamirStorageService
+from licenta.services import http_client
 
 logger = logging.getLogger(__name__)
 
-_ACTION_MAP = {
-    ("POST", "/auth/user"): "create_user",
-    ("POST", "/encrypt/handshake"): "handshake",
-    ("POST", "/encrypt/store"): "store",
-    ("POST", "/encrypt/rotate"): "rotate",
-}
-
 _SKIP_PREFIXES = ("/docs", "/redoc", "/openapi.json", "/favicon.ico")
-
-
-def _resolve_action(method: str, path: str) -> str:
-    key = (method, path)
-    if key in _ACTION_MAP:
-        return _ACTION_MAP[key]
-    if method == "GET" and path.startswith("/encrypt/retrieve/"):
-        return "retrieve"
-    return path
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -55,7 +40,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             duration_ms = round((time.monotonic() - start) * 1000, 2)
             user_id = getattr(request.state, "user_id", None)
             client_ip = request.client.host if request.client else "unknown"
-            action = _resolve_action(request.method, request.url.path)
+            route = request.scope.get("route")
+            action = getattr(route, "path", request.url.path)
             try:
                 with Session(engine) as log_session:
                     write_api_log(
@@ -73,33 +59,28 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 logger.exception("Failed to write API request log")
 
 
-async def _rotation_loop(interval_seconds: int):
-    """Background loop that periodically rotates all ciphertext keys."""
-    while True:
-        await asyncio.sleep(interval_seconds)
-        try:
-            with Session(engine) as session:
-                service = ShamirStorageService(session=session)
-                results = await service.rotate_all_objects()
-                logger.info("Key rotation run complete: %s", results)
-        except Exception:
-            logger.exception("Periodic key rotation failed")
-
-
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     test_connection()
     create_db_and_tables()
-    interval_seconds = int(os.getenv("KEY_ROTATION_INTERVAL_SECONDS", "86400"))
-
-    rotation_task = asyncio.create_task(_rotation_loop(interval_seconds))
+    client = httpx.AsyncClient()
+    http_client.set_client(client)
     try:
         yield
     finally:
-        rotation_task.cancel()
+        await http_client.close()
 
 
 app = FastAPI(lifespan=lifespan)
+
+_allowed_origins = [o for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
