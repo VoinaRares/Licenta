@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
+from sqlmodel import Session, select
 
 from licenta.api.auth import get_current_user
+from licenta.models.ciphertext_object import CipherText
 from licenta.models.handshake_output import HandshakeOutput
 from licenta.models.retrieve_input import RetrieveInput
 from licenta.models.retrieve_output import RetrieveOutput
@@ -8,12 +10,31 @@ from licenta.models.store_input import StoreInput
 from licenta.models.store_output import StoreOutput
 from licenta.models.user import User
 from licenta.services import encryption_service
+from licenta.services.database_service import get_session
 from licenta.services.storage_service_factory import get_storage_service
 from licenta.services.storage_service_interface import StorageServiceInterface
 
 router = APIRouter(
     dependencies=[Depends(get_current_user)]
 )
+
+
+@router.get("/objects")
+def list_objects(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    rows = session.exec(
+        select(CipherText.id, CipherText.needs_verification).where(
+            CipherText.user_id == current_user.id
+        )
+    ).all()
+    return {
+        "objects": [
+            {"id": str(row[0]), "needs_verification": bool(row[1])}
+            for row in rows
+        ]
+    }
 
 
 @router.get("/handshake", response_model=HandshakeOutput)
