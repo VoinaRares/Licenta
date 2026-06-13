@@ -5,11 +5,9 @@ import time
 from typing import Callable, Optional
 
 import httpx
-from sqlmodel import Session
 
 from licenta.services import http_client
-from licenta.services.database_service import engine
-from licenta.services.log_service import write_node_log
+from licenta.services.log_queue import enqueue_node_log
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +108,10 @@ class NodeClient:
                 )
                 status_code = response.status_code
                 if response.status_code == 200:
-                    result = self._parse_signed_share(response.json(), node_id)
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(
+                        None, self._parse_signed_share, response.json(), node_id
+                    )
             except httpx.HTTPError as e:
                 error_details = str(e)
                 logger.warning("Failed retrieving share from %s: %s", device_url, e)
@@ -211,17 +212,12 @@ class NodeClient:
         duration_ms: float,
         error_details: Optional[str],
     ) -> None:
-        try:
-            with Session(engine) as log_session:
-                write_node_log(
-                    session=log_session,
-                    node_id=node_id,
-                    action=action,
-                    method=method,
-                    status_code=status_code,
-                    user_id=user_id,
-                    duration_ms=duration_ms,
-                    error_details=error_details,
-                )
-        except Exception:
-            logger.exception("Failed to write node request log for node %s", node_id)
+        enqueue_node_log(
+            node_id=node_id,
+            action=action,
+            method=method,
+            status_code=status_code,
+            user_id=user_id,
+            duration_ms=duration_ms,
+            error_details=error_details,
+        )

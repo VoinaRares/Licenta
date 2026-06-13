@@ -64,8 +64,7 @@ class ShamirStorageService(StorageServiceInterface):
             needs_verification=inp.needs_verification,
         )
         self.session.add(obj)
-        self.session.commit()
-        self.session.refresh(obj)
+        self.session.flush()  # assigns obj.id without committing
         assert obj.id is not None
 
         secret_int = int.from_bytes(master_secret, "big")
@@ -73,8 +72,7 @@ class ShamirStorageService(StorageServiceInterface):
 
         success_count = await self.node_client.send_shares(shares, obj.id, user_id=user_id)
         if success_count < self.threshold:
-            self.session.delete(obj)
-            self.session.commit()
+            self.session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
@@ -83,6 +81,7 @@ class ShamirStorageService(StorageServiceInterface):
                 ),
             )
 
+        self.session.commit()
         return StoreOutput(object_id=str(obj.id))
 
     async def retrieve(self, inp: RetrieveInput, user_id: int) -> RetrieveOutput:

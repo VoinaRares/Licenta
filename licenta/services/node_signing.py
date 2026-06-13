@@ -10,16 +10,18 @@ from licenta.models.public_key import PublicKey
 
 logger = logging.getLogger(__name__)
 
+with open("private_key.pem", "rb") as _f:
+    _PRIVATE_KEY = serialization.load_pem_private_key(_f.read(), password=None)
+
+_node_public_key_cache: dict[int, object] = {}
+
 
 def canonicalize_payload(payload: dict) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 
 
 def sign_payload(payload: dict) -> str:
-    with open("private_key.pem", "rb") as f:
-        private_key = serialization.load_pem_private_key(f.read(), password=None)
-
-    signature = private_key.sign(
+    signature = _PRIVATE_KEY.sign(
         canonicalize_payload(payload),
         padding.PSS(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -34,14 +36,16 @@ def verify_node_signature(
     payload: dict, signature_b64: str, node_id: int, session: Session
 ) -> bool:
     try:
-        statement = select(PublicKey).where(PublicKey.node_id == node_id)
-        public_key_obj = session.exec(statement).first()
+        public_key = _node_public_key_cache.get(node_id)
+        if public_key is None:
+            statement = select(PublicKey).where(PublicKey.node_id == node_id)
+            public_key_obj = session.exec(statement).first()
+            if not public_key_obj:
+                logger.warning("No public key found in database for node %s", node_id)
+                return False
+            public_key = serialization.load_pem_public_key(public_key_obj.key.encode())
+            _node_public_key_cache[node_id] = public_key
 
-        if not public_key_obj:
-            logger.warning("No public key found in database for node %s", node_id)
-            return False
-
-        public_key = serialization.load_pem_public_key(public_key_obj.key.encode())
         signature = base64.b64decode(signature_b64)
         message = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
 

@@ -2,18 +2,19 @@ import logging
 import os
 import time
 
+import asyncio
+
 import httpx
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from licenta.api import auth, encrypt
-from licenta.services.database_service import engine, test_connection, create_db_and_tables
-from licenta.services.log_service import write_api_log
+from licenta.services.database_service import test_connection, create_db_and_tables
+from licenta.services.log_queue import enqueue_api_log, drain_forever
 from licenta.services import http_client
 
 logger = logging.getLogger(__name__)
@@ -42,21 +43,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             client_ip = request.client.host if request.client else "unknown"
             route = request.scope.get("route")
             action = getattr(route, "path", request.url.path)
-            try:
-                with Session(engine) as log_session:
-                    write_api_log(
-                        session=log_session,
-                        entry_point=request.url.path,
-                        client_ip=client_ip,
-                        action=action,
-                        status_code=status_code,
-                        method=request.method,
-                        user_id=user_id,
-                        duration_ms=duration_ms,
-                        error_details=error_details,
-                    )
-            except Exception:
-                logger.exception("Failed to write API request log")
+            enqueue_api_log(
+                entry_point=request.url.path,
+                client_ip=client_ip,
+                action=action,
+                status_code=status_code,
+                method=request.method,
+                user_id=user_id,
+                duration_ms=duration_ms,
+                error_details=error_details,
+            )
 
 
 @asynccontextmanager
@@ -65,9 +61,11 @@ async def lifespan(_app: FastAPI):
     create_db_and_tables()
     client = httpx.AsyncClient()
     http_client.set_client(client)
+    drainer = asyncio.create_task(drain_forever())
     try:
         yield
     finally:
+        drainer.cancel()
         await http_client.close()
 
 
